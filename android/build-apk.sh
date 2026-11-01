@@ -32,7 +32,11 @@ fi
 [ -n "$BT" ] || { echo "error: aapt2 not found under $SDK/build-tools" >&2; exit 1; }
 
 PLATFORM="$SDK/platforms/android-34/android.jar"
-[ -f "$PLATFORM" ] || { echo "error: $PLATFORM missing (install platform 34)" >&2; exit 1; }
+if [ ! -f "$PLATFORM" ]; then
+  # fall back to whichever platform is installed, newest first
+  PLATFORM="$(ls -d "$SDK"/platforms/android-*/android.jar 2>/dev/null | sort -V | tail -1)"
+fi
+[ -f "$PLATFORM" ] || { echo "error: no android.jar under $SDK/platforms (install a platform)" >&2; exit 1; }
 
 # d8 defaults to a 2 GB heap, which is more than a small CI container has.
 # Override with BUILD_HEAP=512M if the tool JVMs get killed.

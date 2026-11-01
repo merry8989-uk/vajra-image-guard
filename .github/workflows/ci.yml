@@ -37,13 +37,24 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - name: Android SDK
+        run: |
+          # The runner image already ships an SDK; android-actions/setup-android
+          # currently fails because it still asks for the retired 'tools' package.
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SM="$(command -v sdkmanager || echo "$SDK/cmdline-tools/latest/bin/sdkmanager")"
+          yes | "$SM" --sdk_root="$SDK" --licenses >/dev/null 2>&1 || true
+          "$SM" --sdk_root="$SDK" "platforms;android-34" "build-tools;34.0.0" >/dev/null 2>&1 || true
+          ls "$SDK/build-tools" "$SDK/platforms"
       - run: bash android/build-apk.sh
       - run: |
           unzip -l android/build/vajra-image-guard-1.0.0.apk | tail -5
-          aapt2 dump badging android/build/vajra-image-guard-1.0.0.apk 2>/dev/null \
-            | grep -E "package|sdkVersion|uses-permission" || true
+          "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt" dump badging \
+            android/build/vajra-image-guard-1.0.0.apk | grep -E "package|sdkVersion" || true
+          test -z "$("$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt" dump badging \
+            android/build/vajra-image-guard-1.0.0.apk | grep uses-permission)" \
+            && echo "confirmed: the APK requests no permissions" 
       - uses: actions/upload-artifact@v4
         with:
           name: vajra-apk
