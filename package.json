@@ -1,0 +1,20 @@
+{
+  "name": "vajra-image-guard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Add an invisible, L-infinity bounded perturbation to photos so AI image editors produce broken results. Static site, PWA and Android app.",
+  "homepage": "https://merry8989-uk.github.io/vajra-image-guard/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/merry8989-uk/vajra-image-guard.git"
+  },
+  "scripts": {
+    "test": "node --test tests/",
+    "test:py": "python3 -m unittest discover -s tests -v",
+    "icons": "python3 scripts/make_icons.py",
+    "apk": "bash android/build-apk.sh",
+    "survival": "node scripts/measure_survival.mjs && python3 scripts/measure_survival.py"
+  },
+  "license": "MIT"
+}

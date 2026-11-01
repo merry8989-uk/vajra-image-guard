@@ -1,0 +1,28 @@
+# build output
+android/build/
+android/app/src/main/assets/www/
+android/hs_err_pid*.log
+android/replay_pid*.log
+hs_err_pid*.log
+replay_pid*.log
+
+# signing material never goes in the repo
+android/.keystore/
+*.jks
+*.keystore
+keystore.properties
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# node / editors / os
+node_modules/
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# local measurement scratch
+survival-out/

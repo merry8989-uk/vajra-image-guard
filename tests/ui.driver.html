@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<!-- Headless self-test for the site. Not shipped to Pages: the test runner
+     copies it into docs/ as _selftest.html, drives the real UI in Chromium,
+     reads the result out of #log and then deletes it. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>vajra selftest</title></head>
+<body style="background:#000;color:#0f0;font:12px monospace">
+<pre id="log">starting</pre>
+<iframe id="frame" src="index.html" style="width:1100px;height:900px;border:0"></iframe>
+<script>
+const log = [];
+const out = document.getElementById('log');
+function say(msg) { log.push(msg); out.textContent = log.join('\n'); }
+function fail(msg) { say('FAIL ' + msg); document.title = 'FAIL'; }
+function ok(msg) { say('ok   ' + msg); }
+
+// Chromium's virtual clock races ahead of real CPU work, so these waits count
+// polls instead of milliseconds: the solve is synchronous and completes between
+// two polls no matter what the virtual clock says.
+function waitFor(fn, maxPolls = 6000, label = 'condition') {
+  return new Promise((resolve, reject) => {
+    let polls = 0;
+    (function tick() {
+      let v;
+      try { v = fn(); } catch (e) { v = false; }
+      if (v) return resolve(v);
+      if (++polls > maxPolls) return reject(new Error('timeout waiting for ' + label + ' after ' + polls + ' polls'));
+      setTimeout(tick, 10);
+    })();
+  });
+}
+
+function syntheticFile(w, h, name) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, '#204060'); g.addColorStop(1, '#e0b070');
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  x.fillStyle = 'rgba(255,255,255,0.55)';
+  for (let i = 0; i < 60; i++) {
+    x.fillRect(Math.random() * w, Math.random() * h, 6, 6);
+  }
+  return new Promise((resolve) => {
+    c.toBlob((blob) => resolve(new File([blob], name, { type: 'image/png' })), 'image/png');
+  });
+}
+
+(async function run() {
+  try {
+    const frame = document.getElementById('frame');
+    await new Promise((r) => frame.addEventListener('load', r, { once: true }));
+    const doc = frame.contentDocument;
+    const win = frame.contentWindow;
+
+    if (typeof win.Vajra !== 'object') return fail('engine.js did not expose window.Vajra');
+    ok('engine loaded, version ' + win.Vajra.VERSION);
+
+    for (const id of ['file', 'run', 'stage', 'metrics', 'strength', 'probeRun', 'dlPng']) {
+      if (!doc.getElementById(id)) return fail('missing element #' + id);
+    }
+    ok('all controls present');
+
+    // Feed a file through the real <input type=file> path.
+    const file = await syntheticFile(900, 700, 'selftest.png');
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    const input = doc.getElementById('file');
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await waitFor(() => !doc.getElementById('run').disabled, 6000, 'queue to load');
+    ok('image queued, Protect enabled');
+
+    const t0 = performance.now();
+    doc.getElementById('run').click();
+    await waitFor(() => !doc.getElementById('metrics').hidden, 20000, 'metrics');
+    ok('protection finished in ' + Math.round(performance.now() - t0) + ' ms (wall), solver time ' + doc.getElementById('mTime').textContent);
+
+    const psnr = doc.getElementById('mPsnr').textContent;
+    const ssim = doc.getElementById('mSsim').textContent;
+    const maxD = doc.getElementById('mMax').textContent;
+    const mean = doc.getElementById('mMean').textContent;
+    say('     PSNR ' + psnr + ' | SSIM ' + ssim + ' | max ' + maxD + ' | mean ' + mean);
+
+    const psnrVal = parseFloat(psnr);
+    const ssimVal = parseFloat(ssim);
+    const maxVal = parseFloat(maxD);
+    if (!(psnrVal > 30)) return fail('PSNR too low: ' + psnr);
+    if (!(ssimVal > 0.9)) return fail('SSIM too low: ' + ssim);
+    if (!(maxVal <= 7)) return fail('max shift exceeds the 6/255 budget: ' + maxD);
+    ok('quality metrics inside expected range');
+
+    const canvas = doc.getElementById('stage');
+    if (!canvas.classList.contains('is-visible')) return fail('stage canvas not visible');
+    if (canvas.width !== 900 || canvas.height !== 700) return fail('stage size ' + canvas.width + 'x' + canvas.height);
+    ok('protected image drawn at ' + canvas.width + 'x' + canvas.height);
+
+    // Amplified difference view
+    doc.querySelector('.tab[data-view="diff"]').click();
+    await new Promise((r) => setTimeout(r, 150));
+    const diffOn = !doc.getElementById('gainWrap').hidden;
+    if (!diffOn) return fail('gain control did not appear for the diff view');
+    const img = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    let moved = 0, samples = 0;
+    for (let i = 0; i < img.data.length; i += 4 * 37) {
+      samples++;
+      if (Math.abs(img.data[i] - 128) > 2 || Math.abs(img.data[i + 1] - 128) > 2) moved++;
+    }
+    if (moved < samples * 0.05) return fail('diff view looks blank (' + moved + '/' + samples + ' pixels moved)');
+    ok('amplified difference view renders (' + Math.round(100 * moved / samples) + '% of sampled pixels shifted)');
+
+    doc.querySelector('.tab[data-view="protected"]').click();
+    await new Promise((r) => setTimeout(r, 100));
+
+    // JPEG survival probe
+    doc.getElementById('probeRun').click();
+    try {
+      await waitFor(() => /\d|error/.test(doc.getElementById('probeOut').textContent), 20000, 'probe result');
+    } catch (e) {
+      return fail('probe never reported: "' + doc.getElementById('probeOut').textContent + '"');
+    }
+    const probe = doc.getElementById('probeOut').textContent;
+    say('     probe: ' + probe);
+    if (!/%/.test(probe)) return fail('probe produced no percentage');
+    ok('survival probe ran');
+
+    // Strength change must alter the result
+    const before = doc.getElementById('mMax').textContent;
+    const strength = doc.getElementById('strength');
+    strength.value = '14';
+    strength.dispatchEvent(new Event('input', { bubbles: true }));
+    doc.getElementById('run').click();
+    await waitFor(() => doc.getElementById('mMax').textContent !== before, 20000, 'second run');
+    say('     max shift at strength 14: ' + doc.getElementById('mMax').textContent);
+    ok('higher strength increases the perturbation');
+
+    document.title = 'PASS';
+    say('PASS ' + log.filter((l) => l.startsWith('ok')).length + ' checks');
+  } catch (err) {
+    fail(err && err.message ? err.message : String(err));
+  }
+})();
+</script>
+</body>
+</html>

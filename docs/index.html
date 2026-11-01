@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vajra Image Guard — armour your photos before AI edits them</title>
+<meta name="description" content="Add an invisible, L-infinity bounded perturbation to your photos so AI image editors produce broken results instead of convincing fakes. Runs entirely on your device. No uploads, no account, no permissions.">
+<meta name="theme-color" content="#07080b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <a class="brand" href="#top">
+    <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+      <path d="M16 2.5 27 6.6v9.1c0 7-4.6 12.3-11 13.8C9.6 28 5 22.7 5 15.7V6.6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M11 16.2l3.4 3.4L21.5 12" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span>Vajra <em>Image Guard</em></span>
+  </a>
+  <nav class="site-nav">
+    <a href="#tool">Protect</a>
+    <a href="#how">How it works</a>
+    <a href="#app">Android app</a>
+    <a href="#faq">FAQ</a>
+    <a class="nav-gh" href="https://github.com/merry8989-uk/vajra-image-guard" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <h1>Armour your photos <span class="grad">before AI can edit them.</span></h1>
+    <p class="lede">
+      Vajra adds a perturbation you cannot see — bounded, seeded, and computed on your own
+      device — that drags the image's embedding towards a neutral target. Diffusion models
+      conditioned on it produce broken, unrealistic edits instead of convincing fakes.
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="#tool">Protect an image</a>
+      <a class="btn btn-ghost" href="download/vajra-image-guard-1.0.0.apk" download>Download the Android APK</a>
+    </div>
+    <ul class="chips">
+      <li>Nothing is uploaded</li>
+      <li>APK asks for zero permissions</li>
+      <li>Works offline</li>
+      <li>MIT licensed</li>
+    </ul>
+  </section>
+
+  <section id="tool" class="section">
+    <div class="section-head">
+      <h2>The tool</h2>
+      <p>Drop a photo, choose a strength, protect. The output is a normal PNG or JPEG you can post anywhere.</p>
+    </div>
+
+    <div class="tool">
+      <aside class="panel controls">
+        <label class="drop" id="drop" tabindex="0">
+          <input type="file" id="file" accept="image/*" multiple hidden>
+          <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <path d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+          </svg>
+          <strong>Choose or drop an image</strong>
+          <span>JPEG, PNG, WebP · up to 24 megapixels · stays in this tab</span>
+        </label>
+
+        <div class="queue" id="queue" hidden></div>
+
+        <div class="field">
+          <div class="field-head"><label for="strength">Budget</label><output id="strengthVal">6 / 255</output></div>
+          <input type="range" id="strength" min="1" max="16" step="1" value="6">
+          <p class="hint">L-infinity budget for the solve, in 0–255 levels. The RGB shift you actually get is roughly half of it, because the budget is split across luma and the two chroma channels — the results panel reports the measured value. 4–8 is invisible on most photos; go higher for images that will be cropped and re-compressed.</p>
+        </div>
+
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <div class="field">
+            <div class="field-head"><label for="iters">PGD steps</label><output id="itersVal">18</output></div>
+            <input type="range" id="iters" min="4" max="64" step="2" value="18">
+          </div>
+          <div class="field">
+            <div class="field-head"><label for="seed">Seed</label><button class="mini" id="seedBtn" type="button">shuffle</button></div>
+            <input type="number" id="seed" value="1337" min="0" step="1">
+            <p class="hint">The same seed and settings always produce the same protection. Keep it if you re-process an image later.</p>
+          </div>
+          <div class="field">
+            <div class="field-head"><label for="objective">Objective</label></div>
+            <select id="objective">
+              <option value="suppress">Suppress — drive embedding to neutral (default)</option>
+              <option value="displace">Displace — push embedding away from the image</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-head"><label for="maskFloor">Flat-area budget</label><output id="maskFloorVal">35%</output></div>
+            <input type="range" id="maskFloor" min="0" max="100" step="5" value="35">
+            <p class="hint">Share of the budget used in flat regions such as sky or skin. Texture absorbs the rest.</p>
+          </div>
+          <div class="field">
+            <div class="field-head"><label for="jitter">Micro-jitter</label><output id="jitterVal">off</output></div>
+            <input type="range" id="jitter" min="0" max="10" step="1" value="0">
+            <p class="hint">Rotates the frame by up to 0.5° and rescales slightly, breaking exact pixel alignment. Resamples the whole image, so it softens detail a little.</p>
+          </div>
+        </details>
+
+        <button class="btn btn-primary btn-block" id="run" disabled>Protect</button>
+        <p class="status" id="status" role="status">Pick an image to begin.</p>
+      </aside>
+
+      <div class="panel stage">
+        <div class="tabs" role="tablist">
+          <button class="tab is-active" data-view="original" role="tab">Original</button>
+          <button class="tab" data-view="protected" role="tab" disabled>Protected</button>
+          <button class="tab" data-view="diff" role="tab" disabled>Amplified difference</button>
+          <div class="gain" id="gainWrap" hidden>
+            <label for="gain">gain</label>
+            <input type="range" id="gain" min="1" max="32" step="1" value="8">
+            <output id="gainVal">8×</output>
+          </div>
+        </div>
+
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="stage"></canvas>
+          <div class="empty" id="empty">
+            <p>Your image appears here.</p>
+            <p class="empty-sub">Original, protected, and the perturbation itself magnified — so you can judge for yourself that it is invisible.</p>
+          </div>
+          <div class="busy" id="busy" hidden><span class="spinner"></span><span id="busyText">Protecting…</span></div>
+        </div>
+
+        <dl class="metrics" id="metrics" hidden>
+          <div><dt>PSNR</dt><dd id="mPsnr">—</dd></div>
+          <div><dt>SSIM</dt><dd id="mSsim">—</dd></div>
+          <div><dt>Max shift</dt><dd id="mMax">—</dd></div>
+          <div><dt>Mean shift</dt><dd id="mMean">—</dd></div>
+          <div><dt>Embedding</dt><dd id="mSupp">—</dd></div>
+          <div><dt>Solved at</dt><dd id="mRes">—</dd></div>
+          <div><dt>Time</dt><dd id="mTime">—</dd></div>
+        </dl>
+
+        <div class="export" id="export" hidden>
+          <button class="btn btn-primary" id="dlPng">Download PNG</button>
+          <button class="btn btn-ghost" id="dlJpg">Download JPEG</button>
+          <label class="quality">quality <input type="number" id="quality" value="92" min="40" max="100" step="1"></label>
+          <button class="btn btn-ghost" id="share" hidden>Share</button>
+          <span class="save-note" id="saveNote"></span>
+        </div>
+
+        <div class="probe" id="probe" hidden>
+          <div class="probe-head">
+            <strong>Survival probe</strong>
+            <span>Re-encodes both images at the chosen JPEG quality and measures how much of the perturbation is left.</span>
+          </div>
+          <div class="probe-row">
+            <label>quality <input type="number" id="probeQ" value="80" min="30" max="100" step="1"></label>
+            <button class="btn btn-ghost" id="probeRun">Measure</button>
+            <output id="probeOut"></output>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" class="section">
+    <div class="section-head">
+      <h2>How the protection works</h2>
+      <p>Four steps, all of them arithmetic you could re-derive on paper.</p>
+    </div>
+    <ol class="steps">
+      <li>
+        <h3>A fixed surrogate encoder</h3>
+        <p>
+          Four random patterns are generated from your seed and band-pass filtered into the
+          mid-frequency range — the band where the eye is least sensitive and where JPEG's
+          quantisation table does the least damage. Each pattern <code>w<sub>k</sub></code> is
+          mean-removed and scaled to unit RMS. The image's embedding is the projection
+          <code>e<sub>k</sub> = mean(x · w<sub>k</sub>)</code>.
+        </p>
+      </li>
+      <li>
+        <h3>A neutral target</h3>
+        <p>
+          Every pattern has zero mean, so the embedding of a flat mid-grey image is the zero
+          vector. That is the target: the protection pulls the image's mid-band structure
+          towards flat, which is exactly the representation a diffusion model would read as
+          "nothing to preserve here".
+        </p>
+      </li>
+      <li>
+        <h3>Projected gradient descent</h3>
+        <p>
+          The loss is <code>‖e(x)‖²</code>. Because the surrogate is linear its gradient is
+          analytic — <code>∂loss/∂x = 2·Σ e<sub>k</sub>w<sub>k</sub></code> — so each step is a
+          sign step with a decaying rate, followed by a hard projection back into the
+          <code>ε</code>-ball around the original image. No model weights, no backprop through
+          a network, no GPU.
+        </p>
+      </li>
+      <li>
+        <h3>Budget split and masking</h3>
+        <p>
+          The bound is enforced on RGB, not on luma, so the shift you can measure on any channel
+          never exceeds <code>ε</code>. Luma takes half the budget and the rest is divided by the
+          1.402 and 1.772 chroma gains, so colour absorbs what the eye will not notice. Flat
+          regions receive a fraction of the budget; textured regions receive all of it. The solve
+          runs at 512 px and is bilinearly upsampled, which keeps it fast on a phone.
+        </p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="section">
+    <div class="honest">
+      <h2>What this is — and what it is not</h2>
+      <p>
+        This is a deterrent, not a guarantee. Being clear about that is the whole point of the
+        project.
+      </p>
+      <ul>
+        <li>
+          <strong>It is not the paper's attack.</strong> PhotoGuard optimises against the real
+          Stable Diffusion VAE with gradients from the actual network. Vajra optimises against a
+          fixed linear surrogate so it can run in a browser and on a phone with no weights. The
+          procedure is the same; the strength is not. The repository ships a GPU script for the
+          real encoder attack if you need the strong version.
+        </li>
+        <li>
+          <strong>It raises the cost, it does not prevent.</strong> A determined person can crop
+          the image, photograph the screen, or denoise it. Each of those costs them quality, which
+          is the entire objective.
+        </li>
+        <li>
+          <strong>Re-compression eats part of it.</strong> Use the survival probe before you post
+          somewhere that re-encodes aggressively, and raise the strength if the number is low.
+        </li>
+        <li>
+          <strong>It is for your own photos.</strong> Protecting pictures of other people, or
+          images you do not have the rights to, is not what this is for.
+        </li>
+        <li>
+          <strong>Keep the original.</strong> The protected file is meant to be published; the
+          original is what you keep for yourself. Re-running the same seed reproduces the same
+          protection.
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="app" class="section">
+    <div class="section-head">
+      <h2>The Android app</h2>
+      <p>The same engine, wrapped in a native shell so it works with the network switched off.</p>
+    </div>
+    <div class="app-grid">
+      <div class="panel">
+        <h3>Vajra Image Guard 1.0.0</h3>
+        <ul class="ticks">
+          <li>Same solver as this page — identical results for the same seed</li>
+          <li>No permissions at all: no internet, no storage, no camera permission</li>
+          <li>Saves into <code>Pictures/Vajra</code> through the system media store</li>
+          <li>Share sheet built in, so you can protect and post without leaving the app</li>
+          <li>Android 7.0 (API 24) and up, under 250 KB</li>
+        </ul>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="download/vajra-image-guard-1.0.0.apk" download>Download APK</a>
+          <a class="btn btn-ghost" href="https://github.com/merry8989-uk/vajra-image-guard#build-the-apk" target="_blank" rel="noopener">Build it yourself</a>
+        </div>
+        <p class="hint">
+          Installing outside the Play Store means Android will ask you to allow installs from
+          your browser. The APK is signed with a key generated on the build machine; the
+          repository's build script regenerates an equivalent one, so verify the signature if you
+          rebuild rather than trusting this download.
+        </p>
+      </div>
+      <div class="panel">
+        <h3>Or install this page</h3>
+        <p>
+          The site is a progressive web app. Add it to your home screen and it keeps working with
+          no connection — the engine is a 17 KB script and the shell is cached on first visit.
+        </p>
+        <p class="hint" id="installHint">
+          On Android Chrome, use the menu and choose “Add to Home screen”. On desktop Chrome the
+          install icon appears in the address bar.
+        </p>
+        <button class="btn btn-ghost" id="installBtn" hidden>Install this app</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="section">
+    <div class="section-head"><h2>Questions</h2></div>
+    <div class="faq">
+      <details>
+        <summary>Can I see the difference?</summary>
+        <p>
+          Barely. Switch to “Amplified difference” and raise the gain — that is the perturbation
+          multiplied by up to 32×. At the default strength the image measures above 38 dB PSNR and
+          above 0.97 SSIM against the original, which is the range where a viewer cannot tell them
+          apart side by side.
+        </p>
+      </details>
+      <details>
+        <summary>Does it survive WhatsApp or Instagram re-compression?</summary>
+        <p>
+          Partly, and the survival probe tells you how much. Re-encoding at quality 80 typically
+          keeps most of the mid-band energy because that is the band the perturbation lives in.
+          Heavy re-compression at low quality removes more — raise the strength, or publish the PNG.
+        </p>
+      </details>
+      <details>
+        <summary>Does it stop AI editing completely?</summary>
+        <p>
+          No, and nothing on a consumer device does. It makes the edit look wrong, which is the
+          documented goal of the original work: raise the cost of the attack rather than make it
+          impossible. Treat any tool that claims otherwise with suspicion.
+        </p>
+      </details>
+      <details>
+        <summary>Is anything uploaded?</summary>
+        <p>
+          No. There is no server and no network call in the page or the app; the APK does not even
+          request the internet permission. Open your browser's network tab while you use it if you
+          want to check.
+        </p>
+      </details>
+      <details>
+        <summary>Can I undo it?</summary>
+        <p>
+          Keep the original file — that is the clean copy. A protected image can be degraded back
+          towards the original by denoising or resampling, which is precisely the quality cost the
+          protection imposes on anyone trying to edit it.
+        </p>
+      </details>
+      <details>
+        <summary>How does this relate to PhotoGuard?</summary>
+        <p>
+          Vajra is an independent reimplementation of the <em>idea</em> from “Raising the Cost of
+          Malicious AI-Powered Image Editing” (Salman, Khaddaj, Leclerc, Ilyas and Madry, 2023).
+          No code was copied; the solver, the surrogate encoder, the budget split and the app are
+          original. The project is not affiliated with the authors or with MIT.
+        </p>
+      </details>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div>
+    <strong>Vajra Image Guard</strong>
+    <span>MIT licensed · built on the idea in <a href="https://arxiv.org/abs/2302.06588" target="_blank" rel="noopener">arXiv:2302.06588</a></span>
+  </div>
+  <div class="footer-links">
+    <a href="https://github.com/merry8989-uk/vajra-image-guard" target="_blank" rel="noopener">Source</a>
+    <a href="https://github.com/merry8989-uk/vajra-image-guard/blob/main/research/README.md" target="_blank" rel="noopener">Research notes</a>
+    <a href="https://github.com/merry8989-uk/vajra-image-guard/issues" target="_blank" rel="noopener">Issues</a>
+  </div>
+</footer>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

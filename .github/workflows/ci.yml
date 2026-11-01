@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  engine:
+    name: engine tests (node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --test tests/
+
+  reference:
+    name: reference implementation (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install numpy pillow
+      - run: python3 -m unittest discover -s tests -v
+      - run: python3 research/surrogate_pgd.py --self-test
+
+  apk:
+    name: build apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - run: bash android/build-apk.sh
+      - run: |
+          unzip -l android/build/vajra-image-guard-1.0.0.apk | tail -5
+          aapt2 dump badging android/build/vajra-image-guard-1.0.0.apk 2>/dev/null \
+            | grep -E "package|sdkVersion|uses-permission" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vajra-apk
+          path: android/build/vajra-image-guard-1.0.0.apk
