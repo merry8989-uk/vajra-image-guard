@@ -28,6 +28,21 @@ jobs:
       - run: python3 -m unittest discover -s tests -v
       - run: python3 research/surrogate_pgd.py --self-test
 
+  attack:
+    name: real encoder attack (torch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install --quiet numpy pillow diffusers safetensors
+      # No GPU and no VAE download in CI: the PGD loop is tested against a tiny
+      # convolution standing in for the encoder.
+      - run: python3 -m unittest tests.test_encoder_attack -v
+      - run: python3 research/sd_encoder_attack.py --help
+
   apk:
     name: build apk
     runs-on: ubuntu-latest

@@ -13,25 +13,45 @@ Android APK: **[docs/download/vajra-image-guard-1.0.0.apk](docs/download/vajra-i
 - Deterministic: the same seed always produces the same protection.
 - MIT licensed. Not affiliated with the authors of the paper below.
 
-## What it is, honestly
+## What it is, honestly — and which half works
 
 The idea comes from *Raising the Cost of Malicious AI-Powered Image Editing*
 (Salman, Khaddaj, Leclerc, Ilyas, Madry — [arXiv:2302.06588](https://arxiv.org/abs/2302.06588),
-reference implementation `MadryLab/photoguard`). That work optimises an L∞-bounded
-perturbation against the real Stable Diffusion VAE with gradients from the network.
+reference implementation `MadryLab/photoguard`). That work minimises
+`||E(x + δ) − z_target||²` under `||δ||∞ ≤ ε`, where **E is the real Stable
+Diffusion VAE encoder** and `z_target` is the latent of a flat grey image.
 
-Vajra reimplements the *procedure* from scratch — random init, sign-step PGD, an
-L∞ projection back into a ball around the original, a neutral target — but runs it
-against a **fixed linear surrogate encoder** (a bank of band-limited random
-projections) instead of the VAE. A linear encoder has an analytic Jacobian, so the
-solve needs no weights, no backprop and no GPU, and finishes in about a second on a
-phone. That is the whole trade: same shape of attack, far less strength, small
-enough to ship in a browser.
+There are two implementations here, and they are not two strengths of the same
+thing. Measured on the same image, at the same invisible pixel budget, in the real
+VAE's latent space:
 
-So: **this raises the cost of an edit, it does not prevent one.** A determined
-person can crop, denoise or re-photograph the image; every one of those costs them
-quality, which is the objective. For the strong version, `research/sd_encoder_attack.py`
-runs the real encoder attack on a CUDA GPU.
+| image | latent distance to grey | gap closed | PSNR | max shift | VAE view shift |
+| --- | --- | --- | --- | --- | --- |
+| original | 3889 | — | — | 0/255 | 0.00/255 |
+| **browser / app engine** (linear surrogate) | 3864 | **0.6%** | 43.9 dB | 7/255 | **2.18/255** |
+| **real encoder attack** (8 PGD steps) | 423 | **89.1%** | 29.0 dB | 15/255 | **33.4/255** |
+
+Reproduce with `python3 research/measure_attack.py --steps 8 --size 192`.
+
+Read that table plainly: the browser engine changes the perturbation in a way the
+model barely notices — it closes six parts in a thousand of the gap it is aiming
+at — so an AI editor will still make a convincing edit of a "protected" image from
+the app. **The browser tool and the APK do not protect your images.** They are
+shipped because they are honest about their own numbers and because the maths is
+interesting, not because they work.
+
+The **real attack works**: it moves the latent by 89% of the gap in eight steps, and
+with the paper's 200 steps at 512 px on a GPU it is stronger still. It needs a GPU,
+so it runs in Colab or on a desktop:
+
+- **Colab (free):** open `notebooks/vajra_colab.ipynb`, pick a T4 runtime, run all.
+- **Locally:** `pip install torch diffusers safetensors pillow` then
+  `python3 research/sd_encoder_attack.py photo.jpg --steps 200 --eps 0.12`
+
+Even the real attack is a deterrent, not a guarantee: a determined person can crop,
+denoise or re-photograph the image, and each of those costs them quality — which is
+the objective. Newer models are also more robust than the Stable Diffusion-era ones
+this was designed against.
 
 No code, notebooks or assets were copied from the reference implementation.
 
@@ -100,7 +120,8 @@ docs/            the website and the PWA (GitHub Pages serves this folder)
   app.js         UI, canvas work, JPEG survival probe, Android bridge
   download/      the signed APK
 android/         WebView shell: one Activity, one bridge, no Gradle
-research/        numpy port + the GPU encoder attack (see research/README.md)
+research/        numpy port, the real GPU encoder attack, and the measurement harness
+notebooks/       the Colab notebook that runs the real attack on a free GPU
 scripts/         icon generator, survival measurement harness
 tests/           node:test suite, python unittest suite, headless UI self-test
 ```
@@ -133,8 +154,14 @@ npm test                    # 12 engine tests: gradient vs finite differences,
                             # ε bound, determinism, mask, PSNR/SSIM, guards
 npm run test:py             # 10 reference-implementation tests
 python3 research/surrogate_pgd.py --self-test
+python3 -m unittest tests.test_encoder_attack -v   # 7 tests, needs torch
 bash tests/run-ui-selftest.sh   # drives the real UI in headless Chromium
 ```
+
+The encoder-attack tests are skipped when torch is not installed, and need no GPU
+and no VAE download: the PGD loop is tested against a tiny convolution standing in
+for an encoder, which pins down the ε ball, the loss decreasing, masking and
+determinism.
 
 What each suite actually covers:
 
@@ -151,16 +178,19 @@ What each suite actually covers:
 
 ## What has and has not been verified
 
-Verified here, by the commands above: the engine and reference maths, the website
-end to end in headless Chromium, and the APK — it builds, is zipaligned, is signed
-with v2 **and** v3 schemes, declares `minSdkVersion 24` / `targetSdkVersion 34`, and
-contains zero `uses-permission` entries.
+Verified here, by the commands above: the engine and reference maths; the website
+end to end in headless Chromium; the APK — it builds, is zipaligned, is signed with
+v2 **and** v3 schemes, declares `minSdkVersion 24` / `targetSdkVersion 34`, and
+contains zero `uses-permission` entries; and the real encoder attack — its PGD loop
+is unit tested, and it was run against `sd-vae-ft-mse` on CPU, cutting the latent
+distance from 3889 to 423 (89.1%) in 8 steps with a maximum pixel change of 15/255.
 
-**Not** verified: the APK has not been installed on a physical device or emulator
-(no emulator in the build environment), and `research/sd_encoder_attack.py` has
-never been executed — it needs a CUDA GPU and a downloaded VAE checkpoint. Both are
-called out where they live. If you install the APK and something misbehaves, please
-open an issue with your Android version.
+**Not** verified: the APK has never been installed on a physical device or emulator
+(no emulator in the build environment); and the end-to-end effect of the real attack
+on a full Stable Diffusion inpaint/img2img run, which needs a GPU with far more
+memory than the machine this was built on. The paper reports that result — this
+repository does not reproduce it, and does not claim to. If you install the APK and
+something misbehaves, please open an issue with your Android version.
 
 ## Limits and ethics
 
