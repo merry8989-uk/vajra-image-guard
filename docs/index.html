@@ -46,7 +46,7 @@
     <div class="hero-actions">
       <a class="btn btn-primary" href="#real">The GPU tool that works</a>
       <a class="btn btn-ghost" href="#tool">Try the browser tool</a>
-      <a class="btn btn-ghost" href="download/vajra-image-guard-1.0.0.apk" download>Android APK</a>
+      <a class="btn btn-ghost" href="download/vajra-image-guard-1.0.1.apk" download>Android APK</a>
     </div>
     <ul class="chips">
       <li>Nothing is uploaded</li>
@@ -358,7 +358,7 @@ python3 research/sd_encoder_attack.py \
     </div>
     <div class="app-grid">
       <div class="panel">
-        <h3>Vajra Image Guard 1.0.0</h3>
+        <h3>Vajra Image Guard 1.0.1</h3>
         <ul class="ticks">
           <li>Same solver as this page — identical results for the same seed</li>
           <li>No permissions at all: no internet, no storage, no camera permission</li>
@@ -367,14 +367,20 @@ python3 research/sd_encoder_attack.py \
           <li>Android 7.0 (API 24) and up, under 250 KB</li>
         </ul>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="download/vajra-image-guard-1.0.0.apk" download>Download APK</a>
+          <a class="btn btn-primary" href="download/vajra-image-guard-1.0.1.apk" download>Download APK</a>
           <a class="btn btn-ghost" href="https://github.com/merry8989-uk/vajra-image-guard#build-the-apk" target="_blank" rel="noopener">Build it yourself</a>
         </div>
         <p class="hint">
           Installing outside the Play Store means Android will ask you to allow installs from
           your browser. The APK is signed with a key generated on the build machine; the
           repository's build script regenerates an equivalent one, so verify the signature if you
-          rebuild rather than trusting this download.
+          rebuild rather than trusting this download. 1.0.1 uses a new signing key: if you have
+          1.0.0 installed, uninstall it first.
+        </p>
+        <p class="hint" style="color:#fbbf24">
+          This app does not protect against AI editing — it runs the same surrogate engine as the
+          browser tool, which closes 0.6% of the latent gap. It is here because it is honest about
+          that, not because it works. Use the GPU tool above.
         </p>
       </div>
       <div class="panel">

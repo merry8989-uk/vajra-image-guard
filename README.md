@@ -6,7 +6,7 @@ embedding towards a neutral target, so diffusion models conditioned on it produc
 broken edits instead of convincing fakes.
 
 Website (also the app): **https://merry8989-uk.github.io/vajra-image-guard/**
-Android APK: **[docs/download/vajra-image-guard-1.0.0.apk](docs/download/vajra-image-guard-1.0.0.apk)**
+Android APK: **[docs/download/vajra-image-guard-1.0.1.apk](docs/download/vajra-image-guard-1.0.1.apk)**
 
 - Runs entirely in the browser and in the APK. No server, no upload, no account.
 - The Android build requests **zero permissions** — not even `INTERNET`.
@@ -63,6 +63,11 @@ also serve `docs/` from anywhere.
 **Android.** Install the APK from [docs/download/](docs/download/), or from the
 website. Android 7.0 (API 24) and up. Saved images land in `Pictures/Vajra` through
 the system media store; the share sheet is wired up.
+
+The app embeds this website, and therefore carries the same warning: **it does not
+protect against AI editing.** Version 1.0.1 is signed with a freshly generated key
+(the build machine's key was not carried over), so if you installed 1.0.0, uninstall
+it first — Android will not upgrade across signing identities.
 
 **Command line (reference implementation, numpy).**
 
